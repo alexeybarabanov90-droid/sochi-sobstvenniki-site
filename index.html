@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Собственники Сочи</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+</head>
+<body>
+<div id="gate" class="gate"><div class="spinner"></div><p>Загрузка…</p></div>
+
+<main id="app" hidden>
+  <header class="top">
+    <h1>Собственники Сочи</h1>
+    <span class="muted"><span id="who"></span> <button id="logout" class="btn ghost" hidden>Выйти</button></span>
+  </header>
+  <form id="qform" class="search">
+    <input id="q" type="search" placeholder="Например: 2-3к до 15 млн Мамайка не первый" autocomplete="off" enterkeyhint="search">
+    <button type="submit" class="btn primary">Найти</button>
+  </form>
+  <div id="chips" class="chips"></div>
+  <p id="status" class="status muted"></p>
+  <section id="list" class="list"></section>
+  <button id="more" class="btn more" hidden>Показать ещё</button>
+</main>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-box" role="dialog" aria-modal="true">
+    <div class="sheet-head"><b id="sheet-title"></b><button class="btn ghost" data-close>Готово</button></div>
+    <input id="sheet-find" type="search" placeholder="Найти ЖК" hidden>
+    <div id="sheet-body" class="sheet-body"></div>
+    <div class="sheet-foot"><button class="btn ghost" id="sheet-clear">Сбросить</button><button class="btn primary" data-close>Показать</button></div>
+  </div>
+</div>
+
+<div id="viewer" class="viewer" hidden><button class="viewer-close" aria-label="Закрыть">✕</button><div class="viewer-strip"></div></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
