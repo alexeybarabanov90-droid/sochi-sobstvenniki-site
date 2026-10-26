@@ -178,6 +178,7 @@ for (const k of ['nf', 'nl']) $('#' + k).addEventListener('change', readInputs);
 $('#toggle-f').onclick = () => { fclosed = $('#filters').classList.toggle('closed'); if (!mobile()) savePrefs(); };
 $('#apply').onclick = () => { readInputs(); if (mobile()) $('#filters').classList.add('closed'); changed(); };
 $('#reset').onclick = () => { f = {}; text = ''; $('#q').value = ''; leaveFav(); renderFilters(); changed(); };
+$('#status').addEventListener('click', e => { if (e.target.id === 'drop-f') { f = {}; leaveFav(); renderFilters(); changed(); } });   // текст запроса оставить
 $('#sort').onchange = () => { sort = $('#sort').value; savePrefs(); view === 'map' ? mapList() : search(); };
 $('#qform').addEventListener('submit', e => { e.preventDefault(); text = $('#q').value.trim(); readInputs(); $('#q').blur(); changed(); });
 function changed() {
@@ -258,7 +259,8 @@ async function search(more = false) {
     r.items.forEach(x => items.set(x.num, x));
     $('#list').insertAdjacentHTML('beforeend', r.items.map(card).join(''));
     offset += r.items.length;
-    $('#status').textContent = (total ? `Найдено: ${total.toLocaleString('ru-RU')}` : 'Ничего не нашёл — попробуйте убрать часть фильтров') + (r.understood ? ` · понял запрос так: ${r.understood}` : '');
+    $('#status').textContent = (total ? `Найдено: ${total.toLocaleString('ru-RU')}` : r.hidden ? `Без фильтров нашлось бы: ${r.hidden.toLocaleString('ru-RU')} — их скрывают фильтры` : 'Ничего не нашёл — попробуйте убрать часть фильтров') + (r.understood ? ` · понял запрос так: ${r.understood}` : '');
+    if (!total && r.hidden) $('#status').insertAdjacentHTML('beforeend', ' <button type="button" class="link" id="drop-f">Сбросить фильтры</button>');
     $('#more').hidden = view === 'map' || offset >= total;
     $('#more').textContent = `Показать ещё ${Math.min(r.page, total - offset)} из ${(total - offset).toLocaleString('ru-RU')}`;
   } catch (e) {
@@ -452,7 +454,7 @@ $('#sel-make').onclick = () => {
     store.set('agent', { name: $('#s-name').value, phone: $('#s-phone').value });
     const prog = t => { const el = $('#s-prog'); if (el) el.textContent = t; };
     try {
-      // телефоны и проверка рекламы — по одному объекту за запрос: ДС отвечает 7–15 с, один общий запрос упирался в предел времени сервера
+      // телефоны и проверка рекламы — по одному объекту за запрос: сервис телефонов отвечает 7–15 с, один общий запрос упирался в предел времени сервера
       const nums = [...sel]; let limit = '';
       for (const [i, n] of nums.entries()) {
         const x = items.get(n);
@@ -470,7 +472,7 @@ $('#sel-make').onclick = () => {
       $('#sheet-body').innerHTML = `<p>Подборка готова — два PDF.</p>
         <div class="sheet-foot"><a class="btn primary" href="${esc(r.url)}" target="_blank" rel="noopener" data-url="${esc(r.url)}">PDF клиенту</a>
         <a class="btn soft" href="${esc(r.url_agent)}" target="_blank" rel="noopener" data-url="${esc(r.url_agent)}">PDF агенту (с телефонами)</a></div>
-        ${r.phones < r.total ? `<p class="hint">Телефоны в PDF агенту: ${r.phones} из ${r.total} — остальные не открылись (${limit ? 'лимит номеров' : 'у объявления нет мобильного или «Делаем сделки» не ответил'}).</p>` : ''}
+        ${r.phones < r.total ? `<p class="hint">Телефоны в PDF агенту: ${r.phones} из ${r.total} — остальные не открылись (${limit ? 'лимит номеров' : 'у объявления нет мобильного или сервис телефонов не ответил'}).</p>` : ''}
         <p class="hint">Ссылки действуют час; сама подборка хранится 7 дней во вкладке «Мои подборки».</p>`;
       if (tg?.openLink) $('#sheet-body').onclick = ev => { const a = ev.target.closest('[data-url]'); if (a) { ev.preventDefault(); tg.openLink(a.dataset.url); } };
     } catch (e) { if (e.gate) return showLogin(e.gate); $('#s-err').textContent = e.message; b.disabled = false; b.textContent = 'Сформировать'; }
