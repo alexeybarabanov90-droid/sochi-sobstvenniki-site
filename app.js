@@ -10,16 +10,27 @@ const store = {
 const MSG = 'Здравствуйте! Ваше предложение по продаже в Сочи ещё актуально? Хотели уточнить несколько нюансов по просмотру.';
 const KINDS = [['квартира', 'Квартиры'], ['апартаменты', 'Апартаменты'], ['дом', 'Дома'], ['коммерция', 'Коммерция'], ['участок', 'Участки']];
 const ROOMS = [[0, 'Студия'], [1, '1'], [2, '2'], [3, '3'], [4, '4+']];
-const FIN = [['designer', 'Дизайнерский'], ['modern', 'Современный'], ['euro', 'Евроремонт'], ['clean', 'Чистовая'], ['whitebox', 'White box'], ['rough', 'Черновая']];
-const FINL = Object.fromEntries(FIN);
+const FIN = [['designer', 'Дизайнерский'], ['modern', 'Современный'], ['euro', 'Евроремонт'], ['clean', 'Чистовая'], ['rough', 'Черновая']];
+const FINL = { ...Object.fromEntries(FIN), whitebox: 'White box' };   // white box в фильтре нет, в данных — остаётся
 const PMAX = 300;
 
 let token = store.get('token', null);
 let auth = token ? { token } : tg?.initData || null;
 let me = null, meta = null;
 let f = store.get('f2', {}), text = store.get('text', ''), sort = store.get('sort', 'new');
+const mobile = () => innerWidth <= 760;
+let lays = store.get('lay', {}), fclosed = store.get('fclosed', false);   // вид выдачи — свой для телефона и компьютера
+const lay = () => lays[mobile() ? 'm' : 'd'] ?? (mobile() ? '3' : '6');
+let favMode = false, beforeFav = null;   // «Избранное» не затирает сохранённые фильтры
 let sel = new Set(store.get('sel', []));
 let offset = 0, total = 0, busy = false, view = 'list', items = new Map();
+
+// настройки — в браузере и на сервере (в Telegram браузерное хранилище бывает пустым при каждом запуске)
+function savePrefs() {
+  store.set('f2', f); store.set('text', text); store.set('sort', sort); store.set('lay', lays); store.set('fclosed', fclosed);
+  clearTimeout(savePrefs.t);
+  savePrefs.t = setTimeout(() => call('prefs', { prefs: { f, text, sort, lay: lays, fclosed } }).catch(() => {}), 700);
+}
 
 async function call(action, extra = {}) {
   const r = await fetch(window.API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, auth, ...extra }) });
@@ -29,8 +40,6 @@ async function call(action, extra = {}) {
   return data;
 }
 function toast(t, ms = 2600) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, ms); }
-const BRAND = `<div class="brand"><span class="logo"><svg viewBox="0 0 64 64"><rect width="64" height="64" rx="14"/><path d="M14 34 32 18l18 16v14H38V38H26v10H14z"/></svg></span>
-  <span><b>Для Агента</b><small>5 минут — вместо тысячи часов!</small></span></div>`;
 
 // ---------- вход и регистрация ----------
 function gate(html) { $('#gate').innerHTML = html; $('#gate').hidden = false; $('#app').hidden = true; }
@@ -39,7 +48,7 @@ const docs = '<a href="oferta.html" target="_blank">оферты</a>, <a href="r
 function showLogin(reason, tab = 'login') {
   token = null; store.set('token', null);
   if (reason === 'expired') {
-    gate(`${BRAND}<h2>Доступ закончился</h2><p>Обратитесь за доступом к администратору — он продлит его.</p>
+    gate(`<h2>Доступ закончился</h2><p>Обратитесь за доступом к администратору — он продлит его.</p>
       <p class="muted">Тарифы — <a href="prices.html" target="_blank">на странице тарифов</a>.</p>
       <button class="btn ghost" id="relogin">Войти под другим логином</button>`);
     $('#relogin').onclick = () => { auth = null; showLogin(); };
@@ -47,7 +56,7 @@ function showLogin(reason, tab = 'login') {
   }
   const why = { no_access: 'Ваш Telegram не одобрен в боте. Войдите по логину и паролю.', kicked: 'Выполнен вход на другом устройстве — войдите снова.',
     off: 'Доступ закрыт — обратитесь к администратору.', no_auth: '' }[reason] ?? '';
-  gate(`${BRAND}
+  gate(`
     <div class="tabs2"><button class="seg ${tab === 'login' ? 'on' : ''}" data-tab="login">Вход</button><button class="seg ${tab === 'reg' ? 'on' : ''}" data-tab="reg">Регистрация</button></div>
     ${why ? `<p class="muted">${esc(why)}</p>` : ''}
     ${tab === 'login' ? `<form id="login" class="form">
@@ -82,7 +91,7 @@ function showLogin(reason, tab = 'login') {
     btn.disabled = true; $('#gerr').textContent = '';
     try {
       const r = await call('register', Object.fromEntries(['name', 'phone', 'email', 'company', 'login', 'password'].map(k => [k, fm[k].value]).concat([['agree', fm.agree.checked]])));
-      gate(`${BRAND}<h2>Заявка отправлена</h2><p>${esc(r.message)}</p><button class="btn ghost" id="back">Ко входу</button>`);
+      gate(`<h2>Заявка отправлена</h2><p>${esc(r.message)}</p><button class="btn ghost" id="back">Ко входу</button>`);
       $('#back').onclick = () => showLogin();
     } catch (err) { $('#gerr').textContent = err.message; btn.disabled = false; }
   });
@@ -90,11 +99,21 @@ function showLogin(reason, tab = 'login') {
 function logout() { token = null; auth = null; store.set('token', null); showLogin(); }
 
 async function start() {
-  tg?.ready(); tg?.expand();
+  tg?.ready(); tg?.expand(); try { tg?.disableVerticalSwipes?.(); } catch { /* старый Telegram */ }
   if (!auth) return showLogin();
   try { meta = await call('init'); }
-  catch (e) { return e.gate ? showLogin(e.gate) : gate(`${BRAND}<h2>Ошибка</h2><p>${esc(e.message)}</p>`); }
+  catch (e) { return e.gate ? showLogin(e.gate) : gate(`<h2>Ошибка</h2><p>${esc(e.message)}</p>`); }
   me = meta.me;
+  const p = me.prefs;
+  if (p && typeof p === 'object') {
+    if (p.f && typeof p.f === 'object') f = p.f;
+    if (typeof p.text === 'string') text = p.text;
+    if (typeof p.sort === 'string') sort = p.sort;
+    if (p.lay && typeof p.lay === 'object') lays = p.lay;
+    if (typeof p.fclosed === 'boolean') fclosed = p.fclosed;
+  }
+  if (Array.isArray(f.fin)) { f.fin = f.fin.filter(x => FINL[x] && x !== 'whitebox'); if (!f.fin.length) delete f.fin; }
+  document.title = 'Для Агента — объекты от собственников Сочи';
   $('#gate').hidden = true; $('#app').hidden = false;
   $('#who').textContent = me.name || me.login;
   if (me.role === 'admin') { $('#until').textContent = 'администратор'; $('#go-admin').hidden = false; }
@@ -108,7 +127,8 @@ async function start() {
   document.querySelectorAll('[data-go="favs"]').forEach(b => b.hidden = !meta.features.favorites);
   document.querySelectorAll('[data-go="sels"]').forEach(b => b.hidden = !meta.features.selections);
   $('#q').value = text; $('#sort').value = sort;
-  renderFilters(); selbar();
+  $('#filters').classList.toggle('closed', mobile() || fclosed);
+  renderFilters(); selbar(); applyLay();
   search();
 }
 
@@ -152,26 +172,36 @@ function readInputs() {
 }
 $('#pmin-r').addEventListener('input', () => {
   let a = +$('#pmin-r').value, b = +$('#pmax-r').value; if (a > b) { a = b; $('#pmin-r').value = a; }
-  $('#pmin').value = a || ''; paintRange();
+  $('#pmin').value = a || ''; paintRange(); readInputs();
 });
 $('#pmax-r').addEventListener('input', () => {
   let a = +$('#pmin-r').value, b = +$('#pmax-r').value; if (b < a) { b = a; $('#pmax-r').value = b; }
-  $('#pmax').value = b >= PMAX ? '' : b; paintRange();
+  $('#pmax').value = b >= PMAX ? '' : b; paintRange(); readInputs();
 });
 for (const k of ['pmin', 'pmax']) $('#' + k).addEventListener('input', () => {
   const v = +$('#' + k).value; $(`#${k}-r`).value = v > 0 ? Math.min(v, PMAX) : (k === 'pmin' ? 0 : PMAX); paintRange();
 });
-$('#toggle-f').onclick = () => $('#filters').classList.toggle('open');
-$('#apply').onclick = () => { readInputs(); $('#filters').classList.remove('open'); changed(); };
-$('#reset').onclick = () => { f = {}; text = ''; $('#q').value = ''; renderFilters(); changed(); };
-$('#sort').onchange = () => { sort = $('#sort').value; store.set('sort', sort); search(); };
+// поля сразу попадают в фильтр: иначе нажатие на любую кнопку фильтра стирало набранную площадь, этаж и цену
+for (const k of ['amin', 'amax', 'fmin', 'fmax', 'pmin', 'pmax']) $('#' + k).addEventListener('input', readInputs);
+for (const k of ['nf', 'nl']) $('#' + k).addEventListener('change', readInputs);
+$('#toggle-f').onclick = () => { fclosed = $('#filters').classList.toggle('closed'); if (!mobile()) savePrefs(); };
+$('#apply').onclick = () => { readInputs(); if (mobile()) $('#filters').classList.add('closed'); changed(); };
+$('#reset').onclick = () => { f = {}; text = ''; $('#q').value = ''; leaveFav(); renderFilters(); changed(); };
+$('#sort').onchange = () => { sort = $('#sort').value; savePrefs(); search(); };
 $('#qform').addEventListener('submit', e => { e.preventDefault(); text = $('#q').value.trim(); readInputs(); $('#q').blur(); changed(); });
 function changed() {
   f = Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined && !(Array.isArray(v) && !v.length)));
-  store.set('f2', f); store.set('text', text);
+  if (!favMode) savePrefs();
   renderFilters();
   view === 'map' ? loadMap() : search();
 }
+function leaveFav() { favMode = false; beforeFav = null; document.querySelectorAll('[data-go="favs"]').forEach(b => b.classList.remove('on')); }
+function applyLay() {
+  const l = lay();
+  $('#list').classList.remove('l1', 'l3', 'l6'); $('#list').classList.add('l' + l);
+  document.querySelectorAll('[data-lay]').forEach(b => b.classList.toggle('on', b.dataset.lay === l));
+}
+document.querySelectorAll('[data-lay]').forEach(b => b.onclick = () => { lays = { ...lays, [mobile() ? 'm' : 'd']: b.dataset.lay }; applyLay(); savePrefs(); });
 
 // окна: районы, ЖК
 function sheet(title, html, wide = false) {
@@ -242,7 +272,7 @@ $('#more').addEventListener('click', () => search(true));
 function gallery(x) {
   const n = x.web_photos || 0;
   return `<div class="gal" data-n="${n}">
-    <div class="strip">${n ? Array.from({ length: n }, (_, k) => `<img src="${esc(photoUrl(x, k))}" alt="" loading="lazy" data-k="${k}">`).join('')
+    <div class="strip">${n ? Array.from({ length: n }, (_, k) => `<div class="ph"><img src="${esc(photoUrl(x, k))}" alt="" loading="lazy" data-k="${k}"></div>`).join('')
       : '<div class="none">Фото загружаются<br>(обновляются каждую ночь)</div>'}</div>
     ${n > 1 ? `<button class="nav l" data-nav="-1" aria-label="Назад">‹</button><button class="nav r" data-nav="1" aria-label="Вперёд">›</button>
       <div class="dots">${Array.from({ length: n }, (_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>` : ''}
@@ -251,6 +281,12 @@ function gallery(x) {
     ${x.seen ? '<span class="seenmark">Просмотрено</span>' : ''}
   </div>`;
 }
+// вертикальное фото — целиком на размытом фоне, горизонтальное — на всю рамку 4:3 (низ с водяными знаками обрезается)
+document.addEventListener('load', e => {
+  const im = e.target;
+  if (im.tagName !== 'IMG' || !im.parentElement?.classList.contains('ph')) return;
+  if (im.naturalHeight > im.naturalWidth * 1.05) { im.parentElement.classList.add('tall'); im.parentElement.style.setProperty('--bg', `url("${im.src}")`); }
+}, true);
 function tags(x) {
   return [...(x.finish || []).map(t => `<span class="tag">${FINL[t] ?? t}</span>`),
     x.fz214 ? '<span class="tag">ФЗ-214</span>' : '', x.pool ? '<span class="tag">Бассейн</span>' : '',
@@ -280,7 +316,6 @@ function phoneBox(p, owner) {
   return `<div class="phone"><div><a class="num" href="tel:${esc(p)}">${esc(p)}</a>${owner ? ` — ${esc(owner)}` : ''} <small>может быть подменный</small></div>
     ${meta.features.messengers ? `<div class="msgs"><a class="m-call" href="tel:${esc(p)}">Позвонить</a>
       <a class="m-wa" href="https://wa.me/${d}?text=${t}" target="_blank" rel="noopener">WhatsApp</a>
-      <button class="m-max" data-max="${esc(p)}">MAX</button>
       <button class="m-copy" data-copy="${esc(p)}">Копировать</button></div>` : ''}</div>`;
 }
 
@@ -303,10 +338,6 @@ async function onCard(e, cardEl) {
   if (t.closest('[data-open]')) { openItem(num); return; }
   if (t.closest('summary')) { markSeen(cardEl, num); return; }
   if (t.closest('[data-copy]')) { copy(t.closest('[data-copy]').dataset.copy, 'Номер скопирован'); return; }
-  if (t.closest('[data-max]')) {
-    copy(`${t.closest('[data-max]').dataset.max}\n${MSG}`, 'Номер и текст скопированы — вставьте номер в поиске MAX');
-    const u = 'https://web.max.ru/'; tg?.openLink ? tg.openLink(u) : window.open(u, '_blank', 'noopener'); return;
-  }
   if (t.closest('[data-note]')) { noteSheet(num, x); return; }
   const b = t.closest('[data-phone]');
   if (!b) return;
@@ -356,7 +387,7 @@ function rerender(num) {
 async function openItem(num) {
   let x = items.get(num);
   try { const r = await call('item', { num }); x = r.item; items.set(num, x); } catch (e) { if (e.gate) return showLogin(e.gate); if (!x) return toast(e.message); }
-  sheet(`№ ${num}`, `<div class="list" style="grid-template-columns:1fr">${card({ ...x, seen: false }).replace('<details data-d>', '<details data-d open>')}</div>`, true);
+  sheet(`№ ${num}`, `<div class="list l1">${card({ ...x, seen: false }).replace('<details data-d>', '<details data-d open>')}</div>`, true);
   const el = $('#sheet-body .card');
   el.addEventListener('click', e => onCard(e, el));
   document.querySelector(`#list .card[data-num="${num}"]`) && markSeen(document.querySelector(`#list .card[data-num="${num}"]`), num);
@@ -367,15 +398,24 @@ function openViewer(strip, i) {
   const v = $('#viewer'), s = v.querySelector('.viewer-strip'), imgs = [...strip.querySelectorAll('img')];
   s.innerHTML = imgs.map(im => `<img src="${esc(im.src)}" alt="">`).join('');
   v.hidden = false; s.scrollLeft = i * s.clientWidth;
-  const count = () => v.querySelector('.viewer-count').textContent = `${Math.round(s.scrollLeft / s.clientWidth) + 1} / ${imgs.length}`;
+  const count = () => {
+    const k = Math.round(s.scrollLeft / s.clientWidth);
+    v.querySelector('.viewer-count').textContent = `${k + 1} / ${imgs.length}`;
+    v.querySelector('.viewer-nav.l').hidden = k <= 0; v.querySelector('.viewer-nav.r').hidden = k >= imgs.length - 1;
+  };
   s.onscroll = count; count();
   tg?.BackButton.show();
 }
 function closeViewer() { $('#viewer').hidden = true; if ($('#sheet').hidden) tg?.BackButton.hide(); }
-$('#viewer').addEventListener('click', e => { if (e.target.closest('.viewer-close') || e.target.tagName !== 'IMG') closeViewer(); });
+const viewerStep = d => { const s = $('.viewer-strip'); s.scrollBy({ left: s.clientWidth * d, behavior: 'smooth' }); };
+$('#viewer').addEventListener('click', e => {
+  const n = e.target.closest('[data-vnav]');
+  if (n) return viewerStep(+n.dataset.vnav);
+  if (e.target.closest('.viewer-close') || e.target.tagName !== 'IMG') closeViewer();
+});
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeViewer(); closeSheet(); }
-  if (!$('#viewer').hidden && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { const s = $('.viewer-strip'); s.scrollBy({ left: s.clientWidth * (e.key === 'ArrowRight' ? 1 : -1), behavior: 'smooth' }); }
+  if (!$('#viewer').hidden && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) viewerStep(e.key === 'ArrowRight' ? 1 : -1);
 });
 
 // ---------- подборка ----------
@@ -388,9 +428,10 @@ $('#sel-make').onclick = () => {
   const prof = store.get('agent', { name: me.name || '', phone: '' });
   sheet('Подборка в PDF', `
     <label class="field">Название<input id="s-title" placeholder="Например: Для Ивана — 2к до 15 млн" maxlength="80"></label>
-    <label class="field">Для кого<select id="s-mode"><option value="client">Клиенту — без контактов собственника</option><option value="agent">Агенту — с телефонами и пометкой «Уникальна»</option></select></label>
-    <label class="field">Комиссия сверху цены: <b id="s-mk-v">5%</b><input id="s-mk" type="range" min="0" max="10" step="0.5" value="5"></label>
-    <div class="hint">Цены в PDF будут увеличены на этот процент (округление до 10 000 ₽). 0% — цены собственника.</div>
+    <div class="hint">Сразу два PDF: <b>клиенту</b> — без контактов собственника, цены с вашей комиссией; <b>агенту</b> — цены собственника, телефоны и пометка «Уникальна».
+      Неоткрытые телефоны откроются сами в пределах ваших лимитов.</div>
+    <label class="field">Комиссия сверху цены (для клиента): <b id="s-mk-v">5%</b><input id="s-mk" type="range" min="0" max="10" step="0.5" value="5"></label>
+    <div class="hint">Цены в PDF клиенту будут увеличены на этот процент (округление до 10 000 ₽). 0% — цены собственника.</div>
     <label class="field">Ваше имя в PDF<input id="s-name" value="${esc(prof.name)}"></label>
     <label class="field">Ваш телефон в PDF<input id="s-phone" type="tel" value="${esc(prof.phone)}"></label>
     <div class="hint">Объектов: ${sel.size} (до 30). Фото и описания — из нашей базы, источники не указываются. PDF хранится 7 дней во вкладке «Мои подборки».</div>
@@ -398,14 +439,17 @@ $('#sel-make').onclick = () => {
     <div class="sheet-foot"><button class="btn ghost" data-close>Отмена</button><button class="btn primary" id="s-go">Сформировать</button></div>`);
   $('#s-mk').oninput = () => $('#s-mk-v').textContent = `${$('#s-mk').value}%`;
   $('#s-go').onclick = async () => {
-    const b = $('#s-go'); b.disabled = true; b.textContent = 'Собираю PDF…'; $('#s-err').textContent = '';
+    const b = $('#s-go'); b.disabled = true; b.textContent = 'Собираю два PDF… (до минуты)'; $('#s-err').textContent = '';
     store.set('agent', { name: $('#s-name').value, phone: $('#s-phone').value });
     try {
-      const r = await call('sel_create', { nums: [...sel], title: $('#s-title').value, mode: $('#s-mode').value, markup: +$('#s-mk').value,
+      const r = await call('sel_create', { nums: [...sel], title: $('#s-title').value, markup: +$('#s-mk').value,
         agent: $('#s-name').value, agent_phone: $('#s-phone').value });
-      $('#sheet-body').innerHTML = `<p>Подборка готова.</p><a class="btn primary" href="${esc(r.url)}" target="_blank" rel="noopener" id="s-open">Скачать PDF</a>
-        <p class="hint">Ссылка действует час; сама подборка хранится 7 дней во вкладке «Мои подборки».</p>`;
-      if (tg?.openLink) $('#s-open').onclick = ev => { ev.preventDefault(); tg.openLink(r.url); };
+      $('#sheet-body').innerHTML = `<p>Подборка готова — два PDF.</p>
+        <div class="sheet-foot"><a class="btn primary" href="${esc(r.url)}" target="_blank" rel="noopener" data-url="${esc(r.url)}">PDF клиенту</a>
+        <a class="btn soft" href="${esc(r.url_agent)}" target="_blank" rel="noopener" data-url="${esc(r.url_agent)}">PDF агенту (с телефонами)</a></div>
+        ${r.phones < r.total ? `<p class="hint">Телефоны в PDF агенту: ${r.phones} из ${r.total} — остальные не открылись (лимит номеров или у объявления нет мобильного).</p>` : ''}
+        <p class="hint">Ссылки действуют час; сама подборка хранится 7 дней во вкладке «Мои подборки».</p>`;
+      if (tg?.openLink) $('#sheet-body').onclick = ev => { const a = ev.target.closest('[data-url]'); if (a) { ev.preventDefault(); tg.openLink(a.dataset.url); } };
     } catch (e) { if (e.gate) return showLogin(e.gate); $('#s-err').textContent = e.message; b.disabled = false; b.textContent = 'Сформировать'; }
   };
 };
@@ -414,9 +458,10 @@ async function showSelections() {
   try {
     const r = await call('sel_list');
     $('#sheet-body').innerHTML = r.items.length ? r.items.map(s => `<div class="opt" style="cursor:default"><span><b>${esc(s.title)}</b><br>
-      <small class="muted">${new Date(s.created_at).toLocaleString('ru-RU')} · ${s.mode === 'agent' ? 'для агента' : 'для клиента'} · +${s.markup}% · объектов: ${s.nums.length}<br>
+      <small class="muted">${new Date(s.created_at).toLocaleString('ru-RU')} · ${{ agent: 'для агента · ', client: 'для клиента · ' }[s.mode] ?? ''}+${s.markup}% · объектов: ${s.nums.length}<br>
       удалится ${new Date(Date.parse(s.created_at) + 7 * 864e5).toLocaleDateString('ru-RU')}</small></span>
-      ${s.url ? `<a class="btn soft" href="${esc(s.url)}" target="_blank" rel="noopener" data-url="${esc(s.url)}">PDF</a>` : ''}
+      ${s.url ? `<a class="btn soft" href="${esc(s.url)}" target="_blank" rel="noopener" data-url="${esc(s.url)}">${s.url_agent ? 'Клиенту' : 'PDF'}</a>` : ''}
+      ${s.url_agent ? `<a class="btn soft" href="${esc(s.url_agent)}" target="_blank" rel="noopener" data-url="${esc(s.url_agent)}">Агенту</a>` : ''}
       <button class="btn ghost" data-again="${s.nums.join(',')}">В подборку</button></div>`).join('')
       : '<p class="muted">Подборок за последние 7 дней нет. Отметьте объекты галочкой «В подборку» и нажмите «Сформировать PDF».</p>';
     $('#sheet-body').onclick = e => {
@@ -440,9 +485,11 @@ async function loadMap() {
     const r = await call('map', { f, text });
     cluster?.remove();
     cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 });
-    for (const [num, lat, lng, price, rooms, kind, area] of r.points) {
+    for (const [num, lat, lng, price, rooms, kind, area, floor, floors, addr, ph] of r.points) {
       const m = L.marker([lat, lng]);
-      m.bindPopup(`<div class="mpop"><b>${price ? mln(price) + ' млн ₽' : ''}</b><br>${esc(what({ kind, rooms, area }))}<br><a href="#" data-num="${num}">Открыть № ${num}</a></div>`);
+      m.bindPopup(() => `<div class="mpop">${ph ? `<img src="${esc(photoUrl({ num }, 0))}" alt="" data-num="${num}">` : ''}
+        <b>${price ? mln(price) + ' млн ₽' : ''}</b><br>${esc(what({ kind, rooms, area, floor, floors }))}${addr ? `<br><span class="a">${esc(addr)}</span>` : ''}
+        <br><a href="#" data-num="${num}">Открыть № ${num}</a></div>`, { minWidth: 220, maxWidth: 240 });
       cluster.addLayer(m);
     }
     map.addLayer(cluster);
@@ -454,14 +501,19 @@ $('#map').addEventListener('click', e => { const a = e.target.closest('[data-num
 document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
   view = b.dataset.view;
   document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('on', x === b));
-  $('#list').hidden = view === 'map'; $('#map').hidden = view !== 'map'; $('#more').hidden = view === 'map' || offset >= total;
+  $('#list').hidden = view === 'map'; $('#map').hidden = view !== 'map'; $('#more').hidden = view === 'map' || offset >= total; $('#layouts').hidden = view === 'map';
   view === 'map' ? loadMap() : search();
 });
 
 // ---------- меню ----------
 document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
   const g = b.dataset.go;
-  if (g === 'favs') { f = { fav: true }; text = ''; $('#q').value = ''; changed(); toast('Показано избранное — «Сбросить всё», чтобы вернуться'); }
+  if (g === 'favs') {
+    if (favMode) { ({ f, text } = beforeFav); $('#q').value = text; leaveFav(); changed(); return; }
+    beforeFav = { f, text }; favMode = true; b.classList.add('on');
+    f = { fav: true }; text = ''; $('#q').value = ''; changed();
+    toast('Показано избранное — нажмите «★ Избранное» ещё раз, чтобы вернуться к поиску', 4000);
+  }
   if (g === 'sels') showSelections();
   if (g === 'admin') admin();
 });

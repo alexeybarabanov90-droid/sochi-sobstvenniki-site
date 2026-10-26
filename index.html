@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>Для Агента — объекты от собственников Сочи</title>
+<title>Объекты от собственников Сочи</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231453d8'/%3E%3Cpath d='M14 34 32 18l18 16v14H38V38H26v10H14z' fill='white'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3.1">
 <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
 </head>
 <body>
@@ -37,7 +37,7 @@
       <button type="button" class="btn ghost" id="toggle-f">Фильтры <span id="fcount"></span></button>
     </form>
 
-    <section id="filters" class="filters">
+    <section id="filters" class="filters closed">
       <div class="frow">
         <label class="fl">Тип</label>
         <div class="chips" id="f-kind"></div>
@@ -79,7 +79,7 @@
         <label class="fl">Отделка</label>
         <div class="chips" id="f-fin"></div>
       </div>
-      <div class="frow">
+      <div class="frow wide">
         <label class="fl">Ещё</label>
         <div class="chips" id="f-flags"></div>
       </div>
@@ -97,7 +97,10 @@
 
     <div class="bar">
       <p id="status" class="status muted"></p>
-      <div class="views"><button class="seg on" data-view="list">Список</button><button class="seg" data-view="map" id="go-map">Карта</button></div>
+      <div class="bar-r">
+        <div class="views" id="layouts" title="Сколько объявлений на экране"><button class="seg ic" data-lay="6" title="По 6 на экране">▦ 6</button><button class="seg ic" data-lay="3" title="По 3 в ряд">▥ 3</button><button class="seg ic" data-lay="1" title="По одному, крупно">▭ 1</button></div>
+        <div class="views"><button class="seg on" data-view="list">Список</button><button class="seg" data-view="map" id="go-map">Карта</button></div>
+      </div>
     </div>
 
     <section id="list" class="list"></section>
@@ -124,12 +127,14 @@
   </div>
 </div>
 
-<div id="viewer" class="viewer" hidden><button class="viewer-close" aria-label="Закрыть">✕</button><div class="viewer-strip"></div><div class="viewer-count"></div></div>
+<div id="viewer" class="viewer" hidden><button class="viewer-close" aria-label="Закрыть">✕</button>
+  <button class="viewer-nav l" data-vnav="-1" aria-label="Предыдущее фото">‹</button><button class="viewer-nav r" data-vnav="1" aria-label="Следующее фото">›</button>
+  <div class="viewer-strip"></div><div class="viewer-count"></div></div>
 <div id="toast" class="toast" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js" defer></script>
 <script src="config.js"></script>
-<script src="app.js?v=2" defer></script>
+<script src="app.js?v=3.1" defer></script>
 </body>
 </html>
