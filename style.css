@@ -209,6 +209,11 @@ details p { white-space: pre-line; margin: 6px 0 0; }
 .atable .row-actions button { padding: 5px 8px; font-size: 12.5px; }
 .st-pending { color: var(--warn); font-weight: 600; } .st-off { color: var(--bad); } .st-active { color: var(--ok); }
 .ascroll { overflow-x: auto; }
+@media (max-width: 640px) {
+  .atable thead { display: none; }
+  .atable tr { display: block; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .atable td { display: block; border: 0; padding: 3px 0; }
+}
 .agrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
 
 /* просмотр фото и объект */
