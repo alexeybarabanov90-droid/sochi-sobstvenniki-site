@@ -208,7 +208,7 @@ function bindChecks(key, num) {
 // ---------- выдача ----------
 const mln = v => (v / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 const rub = v => Math.round(v).toLocaleString('ru-RU') + ' ₽';
-const zkName = c => c ? 'ЖК ' + String(c).replace(/^\s*ЖК\s*|\s*ЖК\s*$/gi, '') : '';
+const zkName = c => c ? 'ЖК ' + String(c).replace(/(^|\s)ЖК(?=\s|$)/gi, ' ').replace(/\s+/g, ' ').trim() : '';
 function what(x) {
   if (x.kind === 'участок') return `Участок${x.land ? ` ${x.land} сот.` : ''}${x.use_land ? ` · ${x.use_land}` : ''}`;
   if (x.kind === 'коммерция') return [x.type_name || 'Коммерция', x.area && `${x.area} м²`].filter(Boolean).join(' · ');
